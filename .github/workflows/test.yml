@@ -58,6 +58,15 @@ jobs:
       uses: ros-tooling/setup-ros@v0.5
       with:
         ros-distro: humble
+        
+    # --------------------------------------------------
+    # 6. Install ROS 2 Humble
+    # --------------------------------------------------
+    
+    - name: Install ROS 2 Humble
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ros-humble-ros-base
 
     # --------------------------------------------------
     # 7. Install dependencies via rosdep
