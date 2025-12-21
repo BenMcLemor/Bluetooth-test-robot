@@ -1,0 +1,3 @@
+[console_scripts]
+simple_scanner = my_bt_test.simple_scanner:main
+
