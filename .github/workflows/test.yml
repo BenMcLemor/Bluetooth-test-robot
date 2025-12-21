@@ -98,6 +98,11 @@ jobs:
         timeout 10s ros2 run my_bt_test simple_scanner || true
         echo "✅ Runtime test completed"
 
+    # Add this step to create a lowercase image name
+    - name: Create lowercase image tag
+      run: |
+        echo "IMAGE_NAME_LOWER=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
+
     # --------------------------------------------------
     # 10. (Optional) Build Docker image
     # --------------------------------------------------
@@ -105,5 +110,5 @@ jobs:
       run: |
         docker build \
           -f docker/Dockerfile \
-          -t ghcr.io/${{ github.repository }}:latest .
+          -t ghcr.io/${{ env.IMAGE_NAME_LOWER }}:latest .
         echo "✅ Docker image built"
