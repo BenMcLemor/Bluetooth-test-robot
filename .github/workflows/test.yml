@@ -6,16 +6,16 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     
     steps:
     - name: Code herunterladen
       uses: actions/checkout@v3
     
-    - name: ROS2 installieren
+    - name: Setup ROS 2
       uses: ros-tooling/setup-ros@v0.5
       with:
-        required-ros-distributions: humble
+        ros-distro: humble
     
     - name: App bauen
       run: |
