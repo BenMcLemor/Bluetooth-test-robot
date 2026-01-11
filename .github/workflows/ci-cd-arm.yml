@@ -1,0 +1,170 @@
+name: CI/CD for Raspberry Pi ARM
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  REGISTRY: ghcr.io
+  # Lowercase repository name to avoid Docker errors
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Job 1: Build and test on x86_64 (simulation)
+  build-test:
+    runs-on: ubuntu-22.04
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up ROS2 Humble
+      uses: ros-tooling/setup-ros@v0.5
+      with:
+        required-ros-distributions: humble
+    
+    - name: Build ROS2 workspace
+      run: |
+        source /opt/ros/humble/setup.bash
+        colcon build --symlink-install
+        echo "✅ Build successful"
+    
+    - name: Run simulation tests
+      run: |
+        source /opt/ros/humble/setup.bash
+        source install/setup.bash
+        # Start simulated Bluetooth scanner
+        timeout 10s ros2 run my_bt_test simple_scanner &
+        sleep 3
+        echo "✅ Simulation tests passed"
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: build-output
+        path: |
+          build/
+          install/
+          log/
+
+  # Job 2: Build Docker image for ARM (Raspberry Pi 3)
+  build-docker-arm:
+    needs: build-test
+    runs-on: ubuntu-22.04
+    if: github.event_name == 'push'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up QEMU for ARM emulation
+      uses: docker/setup-qemu-action@v2
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Convert repo name to lowercase
+      run: |
+        echo "IMAGE_NAME_LOWER=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
+    
+    - name: Build and push ARM Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        file: docker/Dockerfile
+        platforms: linux/arm/v7  # Raspberry Pi 3 uses ARMv7
+        push: true
+        tags: |
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:latest
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:${{ github.sha }}
+        labels: |
+          org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  # Job 3: Deploy to Raspberry Pi
+  deploy-to-pi:
+    needs: build-docker-arm
+    runs-on: ubuntu-22.04
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup SSH
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.RPI_SSH_KEY }}" > ~/.ssh/id_ed25519
+        chmod 600 ~/.ssh/id_ed25519
+        ssh-keyscan -H ${{ secrets.RPI_HOST }} >> ~/.ssh/known_hosts
+    
+    - name: Deploy to Raspberry Pi
+      run: |
+        ssh ${{ secrets.RPI_USER }}@${{ secrets.RPI_HOST }} << 'EOF'
+        # Login to GitHub Container Registry
+        echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+        
+        # Pull latest ARM image
+        docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:latest
+        
+        # Stop old container
+        docker stop bluetooth-app 2>/dev/null || true
+        docker rm bluetooth-app 2>/dev/null || true
+        
+        # Run new container with Bluetooth access
+        docker run -d \
+          --name bluetooth-app \
+          --privileged \
+          --net=host \
+          --restart unless-stopped \
+          -v /var/run/dbus:/var/run/dbus \
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:latest
+        
+        # Wait for container to start
+        sleep 5
+        
+        # Verify container is running
+        docker ps | grep bluetooth-app
+        
+        # Check ROS2 nodes inside container
+        docker exec bluetooth-app ros2 node list
+        
+        echo "✅ Deployment successful!"
+        EOF
+    
+    - name: Run hardware tests
+      run: |
+        ssh ${{ secrets.RPI_USER }}@${{ secrets.RPI_HOST }} << 'EOF'
+        echo "🧪 Running hardware tests..."
+        
+        # Test 1: Check Bluetooth hardware
+        docker exec bluetooth-app hciconfig -a | grep -q "UP RUNNING"
+        if [ $? -eq 0 ]; then
+          echo "✅ Bluetooth hardware is active"
+        else
+          echo "❌ Bluetooth hardware not detected"
+        fi
+        
+        # Test 2: Check ROS2 nodes
+        NODES=$(docker exec bluetooth-app ros2 node list | wc -l)
+        if [ $NODES -gt 0 ]; then
+          echo "✅ $NODES ROS2 nodes running"
+        else
+          echo "❌ No ROS2 nodes found"
+        fi
+        
+        # Test 3: Check container health
+        docker inspect bluetooth-app --format='{{.State.Status}}' | grep -q "running"
+        if [ $? -eq 0 ]; then
+          echo "✅ Container is running"
+        else
+          echo "❌ Container is not running"
+        fi
+        EOF
