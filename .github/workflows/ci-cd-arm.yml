@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-22.04
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4  # ✅ Auf v4 geupdatet
     
     - name: Set up ROS2 Humble
       uses: ros-tooling/setup-ros@v0.5
@@ -40,13 +40,14 @@ jobs:
         echo "✅ Simulation tests passed"
     
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4  # ✅ AUF v4 GEÄNDERT!
       with:
         name: build-output
         path: |
           build/
           install/
           log/
+        retention-days: 7  # Optional: Speichert nur 7 Tage
 
   # Job 2: Build Docker image for ARM (Raspberry Pi 3)
   build-docker-arm:
@@ -55,16 +56,16 @@ jobs:
     if: github.event_name == 'push'
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4  # ✅ Auf v4
     
     - name: Set up QEMU for ARM emulation
-      uses: docker/setup-qemu-action@v2
+      uses: docker/setup-qemu-action@v3  # ✅ Auf v3
     
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
+      uses: docker/setup-buildx-action@v3  # ✅ Auf v3
     
     - name: Login to GitHub Container Registry
-      uses: docker/login-action@v2
+      uses: docker/login-action@v3  # ✅ Auf v3
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
@@ -75,7 +76,7 @@ jobs:
         echo "IMAGE_NAME_LOWER=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
     
     - name: Build and push ARM Docker image
-      uses: docker/build-push-action@v4
+      uses: docker/build-push-action@v5  # ✅ Auf v5
       with:
         context: .
         file: docker/Dockerfile
@@ -96,7 +97,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4  # ✅ Auf v4
     
     - name: Setup SSH
       run: |
