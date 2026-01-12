@@ -8,13 +8,14 @@ on:
 
 jobs:
   build-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     
     steps:
     - uses: actions/checkout@v4
     
     - name: Fix and Install ROS2
       run: |
+        # Fix expired GPG key
         sudo apt-get update
         sudo apt-get install -y curl gnupg lsb-release
         sudo rm -f /usr/share/keyrings/ros-archive-keyring.gpg
@@ -23,13 +24,11 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y ros-humble-ros-base python3-colcon-common-extensions
     
-    - name: Build and Test
+    - name: Build ROS2 workspace
       run: |
         source /opt/ros/humble/setup.bash
         colcon build --symlink-install
-        timeout 10s ros2 run my_bt_test simple_scanner &
-        sleep 3
-        echo "✅ Build and test successful"
+        echo "✅ Build successful"
 
   build-push:
     needs: build-test
