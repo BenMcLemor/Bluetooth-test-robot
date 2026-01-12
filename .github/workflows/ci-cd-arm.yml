@@ -62,9 +62,7 @@ jobs:
         file: docker/Dockerfile
         platforms: linux/arm64
         push: true
-        tags: |
-          ghcr.io/benmclemor/bluetooth-test-robot:latest
-          ghcr.io/benmclemor/bluetooth-test-robot:${{ github.sha }}
+        tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:latest
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
